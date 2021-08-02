@@ -1456,7 +1456,7 @@ void Document::slotFinishRestoreDocument(const App::Document& doc)
     }
 
     // reset modified flag
-    setModified(false);
+    setModified(doc.testStatus(App::Document::LinkStampChanged));
 }
 
 void Document::slotShowHidden(const App::Document& doc)

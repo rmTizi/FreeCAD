@@ -1863,7 +1863,6 @@ void Document::exportObjects(const std::vector<App::DocumentObject*>& obj, std::
 #define FC_ELEMENT_OBJECT_DEPS "ObjectDeps"
 #define FC_ATTR_DEP_COUNT "Count"
 #define FC_ATTR_DEP_OBJ_NAME "Name"
-#define FC_ATTR_DEP_COUNT "Count"
 #define FC_ATTR_DEP_ALLOW_PARTIAL "AllowPartial"
 #define FC_ELEMENT_OBJECT_DEP "Dep"
 
@@ -2683,7 +2682,7 @@ bool Document::isAnyRestoring() {
 
 // Open the document
 void Document::restore (const char *filename,
-        bool delaySignal, const std::set<std::string> &objNames)
+        bool delaySignal, const std::vector<std::string> &objNames)
 {
     clearUndos();
     d->activeObject = 0;
@@ -2742,8 +2741,7 @@ void Document::restore (const char *filename,
         d->partialLoadObjects.emplace(name,true);
     try {
         Document::Restore(reader);
-    }
-    catch (const Base::Exception& e) {
+    } catch (const Base::Exception& e) {
         Base::Console().Error("Invalid Document.xml: %s\n", e.what());
         setStatus(Document::RestoreError, true);
     }
@@ -2767,15 +2765,16 @@ void Document::restore (const char *filename,
         afterRestore(true);
 }
 
-void Document::afterRestore(bool checkPartial) {
+bool Document::afterRestore(bool checkPartial) {
     Base::FlagToggler<> flag(_IsRestoring,false);
     if(!afterRestore(d->objectArray,checkPartial)) {
         FC_WARN("Reload partial document " << getName());
-        restore();
-        return;
+        GetApplication().signalPendingReloadDocument(*this);
+        return false;
     }
     GetApplication().signalFinishRestoreDocument(*this);
     setStatus(Document::Restoring, false);
+    return true;
 }
 
 bool Document::afterRestore(const std::vector<DocumentObject *> &objArray, bool checkPartial)
@@ -2851,9 +2850,12 @@ bool Document::afterRestore(const std::vector<DocumentObject *> &objArray, bool 
                 std::string errMsg;
                 if(link && (res=link->checkRestore(&errMsg))) {
                     d->touchedObjs.insert(obj);
-                    if(res==1)
+                    if(res==1 || checkPartial) {
                         FC_WARN(obj->getFullName() << '.' << prop->getName() << ": " << errMsg);
-                    else  {
+                        setStatus(Document::LinkStampChanged, true);
+                        if(checkPartial)
+                            return false;
+                    } else  {
                         FC_ERR(obj->getFullName() << '.' << prop->getName() << ": " << errMsg);
                         d->addRecomputeLog(errMsg,obj);
                         setStatus(Document::PartialRestore, true);
